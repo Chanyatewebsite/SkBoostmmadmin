@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SocialX MM - Admin Chat</title>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; }
+        body { background: #f0f2f5; }
+        
+        .header {
+            background: white; padding: 15px 20px; display: flex;
+            justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .logo { font-size: 22px; font-weight: bold; color: #1877f2; }
+        .user-avatar {
+            width: 40px; height: 40px; background: #1877f2; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;
+        }
+        
+        .container {
+            display: flex; height: calc(100vh - 70px); margin: 10px; gap: 10px;
+        }
+        
+        /* User Sidebar */
+        .sidebar {
+            width: 300px; background: white; border-radius: 8px; overflow: hidden;
+            display: flex; flex-direction: column; border: 1px solid #ddd;
+        }
+        .sidebar-header {
+            background: #1877f2; color: white; padding: 15px; font-weight: bold;
+        }
+        .user-list { flex: 1; overflow-y: auto; padding: 10px; }
+        .user-item {
+            display: flex; align-items: center; padding: 10px; border-radius: 6px;
+            margin-bottom: 5px; cursor: pointer; border-bottom: 1px solid #eee;
+        }
+        .user-item:hover { background: #f5f5f5; }
+        .user-item.active { background: #e7f3ff; border-left: 3px solid #1877f2; }
+        .user-avatar-small {
+            width: 35px; height: 35px; background: #1877f2; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; color: white;
+            font-weight: bold; margin-right: 10px;
+        }
+        .user-details { flex: 1; }
+        .user-name { font-weight: 600; font-size: 14px; display: flex; justify-content: space-between; }
+        .user-email { font-size: 12px; color: #65676b; }
+        .unread-badge {
+            background: #e41e3f; color: white; padding: 2px 6px; border-radius: 10px;
+            font-size: 11px; font-weight: bold; margin-left: 5px;
+        }
+        
+        /* Chat Area */
+        .chat-area {
+            flex: 1; background: white; border-radius: 8px; display: flex;
+            flex-direction: column; overflow: hidden; border: 1px solid #ddd;
+        }
+        .chat-header {
+            background: #1877f2; color: white; padding: 15px 20px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .chat-messages {
+            flex: 1; padding: 20px; overflow-y: auto; background: #f9f9f9;
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        .message { max-width: 70%; display: flex; flex-direction: column; }
+        .message.user { align-self: flex-end; }
+        .message.admin { align-self: flex-start; }
+        .message-bubble {
+            padding: 10px 15px; border-radius: 18px; font-size: 14px; word-wrap: break-word;
+        }
+        .message.user .message-bubble {
+            background: #1877f2; color: white; border-bottom-right-radius: 5px;
+        }
+        .message.admin .message-bubble {
+            background: white; color: #050505; border: 1px solid #ddd; border-bottom-left-radius: 5px;
+        }
+        .message-time { font-size: 11px; color: #65676b; margin-top: 4px; }
+        .message.user .message-time { text-align: right; }
+        
+        .chat-input {
+            display: flex; padding: 15px; gap: 10px; border-top: 1px solid #ddd;
+            background: white;
+        }
+        .chat-input input {
+            flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 20px;
+            outline: none;
+        }
+        .chat-input input:focus { border-color: #1877f2; }
+        .send-btn {
+            padding: 12px 20px; background: #1877f2; color: white; border: none;
+            border-radius: 20px; cursor: pointer; font-weight: bold;
+        }
+        .send-btn:hover { background: #166fe5; }
+        
+        .no-select {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; height: 100%; color: #65676b; gap: 10px;
+        }
+        .no-select i { font-size: 50px; color: #ddd; }
+        
+        .loading {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: white; display: flex; justify-content: center; align-items: center;
+            z-index: 1000; flex-direction: column;
+        }
+        .loading-spinner {
+            width: 40px; height: 40px; border: 3px solid #f3f3f3;
+            border-top: 3px solid #1877f2; border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .error-message, .success-message {
+            position: fixed; top: 20px; right: 20px; padding: 12px 20px;
+            border-radius: 6px; color: white; display: none; z-index: 3000; font-size: 14px;
+        }
+        .error-message { background: #e41e3f; }
+        .success-message { background: #42b72a; }
+    </style>
+</head>
+<body>
+    <div class="loading" id="loading">
+        <div class="loading-spinner"></div>
+        <p style="margin-top:15px; color:#1877f2;">Loading...</p>
+    </div>
+    
+    <div class="error-message" id="errorMessage">
+        <i class="fas fa-exclamation-circle"></i> <span id="errorText">Error!</span>
+    </div>
+    <div class="success-message" id="successMessage">
+        <i class="fas fa-check-circle"></i> <span id="successText">Success!</span>
+    </div>
+
+    <div class="header" id="header" style="display:none;">
+        <div class="logo">Sk Boost Mmm - Admin Panel</div><form action="admin.html" method="GET">
+        <button type="submit" class="btn">Main</button>
+    </form>
+
+        <div class="user-avatar" id="userAvatar">A</div>
+    </div>
+
+    <div id="dynamicContent"></div>
+
+    <script>
+    // Firebase Config
+      const firebaseConfig = {
+   apiKey: "AIzaSyBIZFBR1GSi_e0UJp_2P9EvdMUBt-nc_oY",
+   authDomain: "skboostmm-26050.firebaseapp.com",
+   projectId: "skboostmm-26050",
+   storageBucket: "skboostmm-26050.firebasestorage.app",
+   messagingSenderId: "767641777424",
+   appId: "1:767641777424:web:94411b0a99fdab73aba195",
+   measurementId: "G-PVGKD6H1PG"
+};
+
+    
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    
+    // Admin Email Only - admin@email.com
+    const ADMIN_EMAIL = 'admin@email.com';
+    
+    let currentUser = null;
+    let isAdmin = false;
+    let selectedUserId = null;
+    let usersListener = null;
+    let messagesListener = null;
+    
+    // ===== UTILITY FUNCTIONS =====
+    function showError(msg) {
+        document.getElementById('errorText').innerText = msg;
+        document.getElementById('errorMessage').style.display = 'flex';
+        setTimeout(() => document.getElementById('errorMessage').style.display = 'none', 3000);
+    }
+    
+    function showSuccess(msg) {
+        document.getElementById('successText').innerText = msg;
+        document.getElementById('successMessage').style.display = 'flex';
+        setTimeout(() => document.getElementById('successMessage').style.display = 'none', 2000);
+    }
+    
+    function escapeHtml(text) {
+        if (!text) return '';
+        return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    
+    // ===== ADMIN VIEW =====
+    function renderAdminView() {
+        const html = `
+            <div class="container">
+                <!-- Left Sidebar - User List -->
+                <div class="sidebar">
+                    <div class="sidebar-header">
+                        <i class="fas fa-users"></i> Users 
+                        <span style="float:right; background:rgba(255,255,255,0.2); padding:2px 8px; border-radius:12px;" id="totalUsers">0</span>
+                    </div>
+                    <div class="user-list" id="userList">
+                        <div style="text-align:center; padding:30px; color:#65676b;">
+                            <i class="fas fa-spinner fa-spin"></i> Loading users...
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Right Side - Chat Area -->
+                <div class="chat-area">
+                    <div class="chat-header" id="chatHeader">
+                        <div id="selectedUserInfo">
+                            <i class="fas fa-user-circle"></i> Select a user to start chat
+                        </div>
+                        <span style="background:rgba(255,255,255,0.2); padding:4px 12px; border-radius:20px; font-size:13px;">
+                            <i class="fas fa-shield-alt"></i> Admin
+                        </span>
+                    </div>
+                    
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="no-select">
+                            <i class="fas fa-comment-dots"></i>
+                            <h4>No user selected</h4>
+                            <p style="font-size:13px;">Click on a user from the left side to view conversation</p>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-input" id="chatInputSection" style="display:none;">
+                        <input type="text" id="adminMessageInput" placeholder="Type your reply..." autocomplete="off">
+                        <button class="send-btn" onclick="sendAdminReply()">
+                            <i class="fas fa-paper-plane"></i> Send
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('dynamicContent').innerHTML = html;
+        
+        // Load users
+        loadUsers();
+    }
+    
+    // ===== LOAD ALL USERS =====
+    function loadUsers() {
+        if (!isAdmin) return;
+        
+        // Remove old listener
+        if (usersListener) usersListener();
+        
+        // Get all chats
+        usersListener = db.collection('chats').onSnapshot((snapshot) => {
+            console.log('📋 Chats snapshot received, size:', snapshot.size);
+            
+            const usersMap = new Map();
+            const unreadMap = new Map();
+            
+            snapshot.forEach((doc) => {
+                const msg = doc.data();
+                
+                // Skip if no userId
+                if (!msg.userId) return;
+                
+                // Get or create user
+                if (!usersMap.has(msg.userId)) {
+                    usersMap.set(msg.userId, {
+                        userId: msg.userId,
+                        email: msg.userEmail || 'No email',
+                        name: msg.userName || (msg.userEmail ? msg.userEmail.split('@')[0] : 'User'),
+                        lastTime: msg.timestamp,
+                        unread: 0
+                    });
+                }
+                
+                // Count unread messages from users (not admin)
+                if (msg.sender === 'user' && !msg.read) {
+                    unreadMap.set(msg.userId, (unreadMap.get(msg.userId) || 0) + 1);
+                }
+            });
+            
+            // Convert to array
+            let users = Array.from(usersMap.values());
+            
+            // Add unread counts
+            users.forEach(user => {
+                user.unread = unreadMap.get(user.userId) || 0;
+            });
+            
+            // Sort by unread first, then by last message time
+            users.sort((a, b) => {
+                if (a.unread > 0 && b.unread === 0) return -1;
+                if (a.unread === 0 && b.unread > 0) return 1;
+                return (b.lastTime?.seconds || 0) - (a.lastTime?.seconds || 0);
+            });
+            
+            console.log('👥 Users loaded:', users.length);
+            displayUserList(users);
+            document.getElementById('totalUsers').innerText = users.length;
+            
+        }, (error) => {
+            console.error('❌ Error loading users:', error);
+            showError('Failed to load users: ' + error.message);
+        });
+    }
+    
+    // ===== DISPLAY USER LIST =====
+    function displayUserList(users) {
+        const userListDiv = document.getElementById('userList');
+        if (!userListDiv) return;
+        
+        if (users.length === 0) {
+            userListDiv.innerHTML = '<div style="text-align:center; padding:40px; color:#65676b;">No users found</div>';
+            return;
+        }
+        
+        let html = '';
+        users.forEach(user => {
+            const activeClass = selectedUserId === user.userId ? 'active' : '';
+            const avatarLetter = (user.name || 'U').charAt(0).toUpperCase();
+            
+            html += `
+                <div class="user-item ${activeClass}" onclick="selectUser('${user.userId}', '${user.email}', '${user.name}')">
+                    <div class="user-avatar-small">${escapeHtml(avatarLetter)}</div>
+                    <div class="user-details">
+                        <div class="user-name">
+                            ${escapeHtml(user.name)}
+                            ${user.unread > 0 ? `<span class="unread-badge">${user.unread}</span>` : ''}
+                        </div>
+                        <div class="user-email">${escapeHtml(user.email)}</div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        userListDiv.innerHTML = html;
+    }
+    
+    // ===== SELECT USER =====
+    function selectUser(userId, email, name) {
+        console.log('👤 Selected user:', userId, email);
+        selectedUserId = userId;
+        
+        // Update header
+        document.getElementById('selectedUserInfo').innerHTML = `
+            <i class="fas fa-user-circle"></i> 
+            <strong>${escapeHtml(name)}</strong>
+            <span style="font-size:13px; margin-left:8px; opacity:0.9;">${escapeHtml(email)}</span>
+        `;
+        
+        // Show chat input
+        document.getElementById('chatInputSection').style.display = 'flex';
+        
+        // Load messages for this user
+        loadUserMessages(userId);
+        
+        // Refresh user list to show active state
+        loadUsers();
+    }
+    
+    // ===== LOAD MESSAGES FOR SELECTED USER =====
+    function loadUserMessages(userId) {
+        if (!userId) return;
+        
+        // Remove old listener
+        if (messagesListener) messagesListener();
+        
+        const messagesDiv = document.getElementById('chatMessages');
+        messagesDiv.innerHTML = '<div style="text-align:center; padding:30px; color:#65676b;"><i class="fas fa-spinner fa-spin"></i> Loading messages...</div>';
+        
+        // Get messages for this user
+        messagesListener = db.collection('chats')
+            .where('userId', '==', userId)
+            .onSnapshot((snapshot) => {
+                console.log('💬 Messages snapshot for user:', userId, 'size:', snapshot.size);
+                
+                messagesDiv.innerHTML = '';
+                
+                if (snapshot.empty) {
+                    messagesDiv.innerHTML = '<div style="text-align:center; padding:40px; color:#65676b;">No messages yet</div>';
+                    return;
+                }
+                
+                // Convert to array and sort by time
+                let messages = [];
+                snapshot.forEach(doc => {
+                    let data = doc.data();
+                    data.id = doc.id;
+                    messages.push(data);
+                });
+                
+                // Sort by timestamp (oldest first)
+                messages.sort((a, b) => {
+                    let timeA = a.timestamp ? a.timestamp.seconds : 0;
+                    let timeB = b.timestamp ? b.timestamp.seconds : 0;
+                    return timeA - timeB;
+                });
+                
+                // Display messages
+                messages.forEach(msg => {
+                    const div = document.createElement('div');
+                    div.className = `message ${msg.sender}`;
+                    
+                    let timeStr = 'Just now';
+                    if (msg.timestamp) {
+                        const date = msg.timestamp.toDate();
+                        timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    }
+                    
+                    div.innerHTML = `
+                        <div class="message-bubble">
+                            ${escapeHtml(msg.text)}
+                        </div>
+                        <div class="message-time">
+                            ${msg.sender === 'user' ? escapeHtml(msg.userName || 'User') : 'You'} • ${timeStr}
+                        </div>
+                    `;
+                    messagesDiv.appendChild(div);
+                    
+                    // Mark user messages as read
+                    if (msg.sender === 'user' && !msg.read) {
+                        console.log('✅ Marking message as read:', msg.id);
+                        db.collection('chats').doc(msg.id).update({ read: true });
+                    }
+                });
+                
+                // Scroll to bottom
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }, (error) => {
+                console.error('❌ Error loading messages:', error);
+                showError('Failed to load messages: ' + error.message);
+            });
+    }
+    
+    // ===== SEND ADMIN REPLY =====
+    async function sendAdminReply() {
+        const input = document.getElementById('adminMessageInput');
+        if (!input.value.trim()) {
+            showError('Please type a message');
+            return;
+        }
+        
+        if (!selectedUserId) {
+            showError('Please select a user first');
+            return;
+        }
+        
+        const messageText = input.value.trim();
+        input.value = '';
+        
+        try {
+            console.log('📤 Sending admin reply to:', selectedUserId);
+            
+            await db.collection('chats').add({
+                userId: selectedUserId,
+                userEmail: selectedUserId, // Will be updated by user's message
+                userName: 'User',
+                text: messageText,
+                sender: 'admin',
+                adminId: currentUser.uid,
+                adminEmail: currentUser.email,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                read: false
+            });
+            
+            console.log('✅ Admin reply sent');
+            showSuccess('Reply sent');
+            
+        } catch (error) {
+            console.error('❌ Error sending reply:', error);
+            showError('Failed to send reply: ' + error.message);
+        }
+    }
+    
+    // ===== CHECK AUTH =====
+    auth.onAuthStateChanged((user) => {
+        console.log('🔥 Auth state changed:', user ? user.email : 'No user');
+        
+        if (user) {
+            currentUser = user;
+            
+            // Check if this is admin
+            if (user.email === ADMIN_EMAIL) {
+                isAdmin = true;
+                console.log('✅ Admin logged in:', user.email);
+                
+                // Hide loading, show header
+                                // Hide loading, show header
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('header').style.display = 'flex';
+                document.getElementById('userAvatar').innerText = 'A';
+                
+                // Show admin view
+                renderAdminView();
+            } else {
+                // Not admin - redirect
+                console.log('⛔ Not admin, redirecting to user page');
+                window.location.href = 'user.html';
+            }
+        } else {
+            // No user - redirect to login
+            console.log('⚠️ No user, redirecting to login');
+            window.location.href = 'login.html';
+        }
+    });
+    </script>
+</body>
+</html>
